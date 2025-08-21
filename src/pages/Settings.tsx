@@ -98,12 +98,9 @@ export const Settings = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button variant="outline" className="w-full">
-              Change Password
-            </Button>
-            <Button variant="outline" className="w-full">
-              Download Account Data
-            </Button>
+            <div className="text-sm text-muted-foreground">
+              Security features will be available in future updates.
+            </div>
           </CardContent>
         </Card>
 

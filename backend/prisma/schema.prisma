@@ -12,26 +12,77 @@ model User {
   email     String   @unique
   password  String
   isAdmin   Boolean  @default(false)
-  domains   Domain[]
   createdAt DateTime @default(now())
+  domains   Domain[]
 }
 
 model Domain {
-  id        String      @id @default(uuid())
-  name      String      @unique
-  user      User        @relation(fields: [userId], references: [id])
-  userId    String
-  records   DNSRecord[]
-  createdAt DateTime    @default(now())
+  id            String            @id @default(uuid())
+  name          String            @unique
+  userId        String
+  createdAt     DateTime          @default(now())
+  loadBalancers DNSLoadBalancer[]
+  records       DNSRecord[]
+  user          User              @relation(fields: [userId], references: [id])
 }
 
 model DNSRecord {
-  id        String   @id @default(uuid())
-  domain    Domain   @relation(fields: [domainId], references: [id])
-  domainId  String
-  type      String
-  name      String
-  value     String
-  ttl       Int      @default(3600)
-  createdAt DateTime @default(now())
+  id             String           @id @default(uuid())
+  domainId       String
+  type           String
+  name           String
+  value          String
+  ttl            Int              @default(3600)
+  createdAt      DateTime         @default(now())
+  port           Int?
+  priority       Int?
+  weight         Int?
+  isLoadBalanced Boolean          @default(false)
+  loadBalancerId String?
+  domain         Domain           @relation(fields: [domainId], references: [id])
+  loadBalancer   DNSLoadBalancer? @relation(fields: [loadBalancerId], references: [id])
+}
+
+model DNSLoadBalancer {
+  id                  String      @id @default(uuid())
+  name                String
+  domainId            String
+  algorithm           String      @default("round-robin")
+  healthCheckInterval Int         @default(30000)
+  healthCheckTimeout  Int         @default(5000)
+  maxRetries          Int         @default(3)
+  isActive            Boolean     @default(true)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  domain              Domain      @relation(fields: [domainId], references: [id])
+  records             DNSRecord[]
+  servers             DNSServer[]
+}
+
+model DNSServer {
+  id             String           @id @default(uuid())
+  name           String
+  ip             String
+  port           Int              @default(80)
+  weight         Int              @default(100)
+  isActive       Boolean          @default(true)
+  loadBalancerId String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  loadBalancer   DNSLoadBalancer  @relation(fields: [loadBalancerId], references: [id])
+  health         DNSServerHealth?
+}
+
+model DNSServerHealth {
+  id           String    @id @default(uuid())
+  serverId     String    @unique
+  status       String    @default("unknown")
+  lastCheck    DateTime  @default(now())
+  responseTime Int       @default(-1)
+  uptime       Float     @default(0)
+  load         Float     @default(0)
+  memoryUsage  Float     @default(0)
+  diskUsage    Float     @default(0)
+  updatedAt    DateTime  @updatedAt
+  server       DNSServer @relation(fields: [serverId], references: [id])
 }

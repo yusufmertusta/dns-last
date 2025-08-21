@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import Index from "./pages/Index";
 import { Dashboard } from "./pages/Dashboard";
 import { Domains } from "./pages/Domains";
+import { DNSLoadBalancer } from "./pages/DNSLoadBalancer";
 import { Profile } from "./pages/Profile";
 import { Settings } from "./pages/Settings";
 import { Admin } from "./pages/Admin";
@@ -27,6 +28,7 @@ const App = () => (
             <Route element={<AuthenticatedLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/domains" element={<Domains />} />
+              <Route path="/dns-loadbalancer" element={<DNSLoadBalancer />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin" element={<Admin />} />

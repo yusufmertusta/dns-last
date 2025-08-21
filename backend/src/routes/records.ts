@@ -1,13 +1,13 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { AuthRequest } from '../middlewares/auth';
+import { AuthRequest, authenticateJWT } from '../middlewares/auth';
 import { syncBind9 } from '../services/bind9';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 // Add DNS record
-router.post('/:domainId', async (req: AuthRequest, res) => {
+router.post('/:domainId', authenticateJWT, async (req: AuthRequest, res) => {
   const { type, name, value, ttl } = req.body;
   const domain = await prisma.domain.findUnique({ where: { id: req.params.domainId } });
   if (!domain) return res.sendStatus(404);
@@ -18,7 +18,7 @@ router.post('/:domainId', async (req: AuthRequest, res) => {
 });
 
 // Update DNS record
-router.put('/:id', async (req: AuthRequest, res) => {
+router.put('/:id', authenticateJWT, async (req: AuthRequest, res) => {
   const record = await prisma.dNSRecord.findUnique({ where: { id: req.params.id }, include: { domain: true } });
   if (!record) return res.sendStatus(404);
   if (!req.user.isAdmin && record.domain.userId !== req.user.id) return res.sendStatus(403);
@@ -29,7 +29,7 @@ router.put('/:id', async (req: AuthRequest, res) => {
 });
 
 // Delete DNS record
-router.delete('/:id', async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateJWT, async (req: AuthRequest, res) => {
   const record = await prisma.dNSRecord.findUnique({ where: { id: req.params.id }, include: { domain: true } });
   if (!record) return res.sendStatus(404);
   if (!req.user.isAdmin && record.domain.userId !== req.user.id) return res.sendStatus(403);

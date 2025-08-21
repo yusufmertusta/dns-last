@@ -9,6 +9,45 @@ const ZONE_DIR = '/etc/bind/zones';
 const RNDC_PATH = '/usr/sbin/rndc';
 const NAMED_CONF_LOCAL = '/etc/bind/named.conf.local';
 
+interface DNSLoadBalancer {
+  id: string;
+  name: string;
+  isActive: boolean;
+  algorithm: string;
+  domain: {
+    name: string;
+  };
+  servers: Array<{
+    id: string;
+    name: string;
+    ip: string;
+    port: number;
+    weight: number;
+    isActive: boolean;
+    health?: {
+      status: string;
+      responseTime: number;
+    };
+  }>;
+}
+
+interface Domain {
+  id: string;
+  name: string;
+  records: Array<{
+    id: string;
+    name: string;
+    type: string;
+    value: string;
+    ttl: number;
+    priority?: number | null;
+    weight?: number | null;
+    port?: number | null;
+    isLoadBalanced?: boolean;
+    loadBalancerId?: string | null;
+  }>;
+}
+
 export async function syncBind9() {
   try {
     console.log('Syncing Bind9...');
@@ -20,13 +59,25 @@ export async function syncBind9() {
       }
     });
 
+    // Get all DNS load balancers and their servers
+    const loadBalancers = await prisma.dNSLoadBalancer.findMany({
+      include: {
+        domain: true,
+        servers: {
+          include: {
+            health: true
+          }
+        }
+      }
+    });
+
     // Create zone files for each domain
     for (const domain of domains) {
-      await createZoneFile(domain);
+      await createZoneFile(domain as Domain, loadBalancers as DNSLoadBalancer[]);
     }
 
     // Update named.conf.local
-    await updateNamedConfLocal(domains);
+    await updateNamedConfLocal(domains as Domain[]);
 
     // Reload BIND9
     await reloadBind9();
@@ -38,7 +89,7 @@ export async function syncBind9() {
   }
 }
 
-async function createZoneFile(domain: any) {
+async function createZoneFile(domain: Domain, loadBalancers: DNSLoadBalancer[]) {
   const zoneFileName = `${domain.name}.zone`;
   const zoneFilePath = `${ZONE_DIR}/${zoneFileName}`;
   
@@ -58,6 +109,9 @@ ns1     IN      A       127.0.0.1
 
   // Add DNS records
   for (const record of domain.records) {
+    // Load balanced kayıtları atla, bunlar ayrıca işlenecek
+    if (record.isLoadBalanced) continue;
+    
     const ttl = record.ttl || 300;
     const priority = record.priority ? ` ${record.priority}` : '';
     const weight = record.weight ? ` ${record.weight}` : '';
@@ -108,6 +162,60 @@ ns1     IN      A       127.0.0.1
     }
   }
 
+  // Add DNS load balancer records
+  for (const lb of loadBalancers) {
+    if (lb.isActive && lb.domain.name === domain.name && lb.servers.length > 0) {
+      const healthyServers = lb.servers.filter(server => 
+        server.isActive && server.health && server.health.status === 'healthy'
+      );
+      
+      if (healthyServers.length === 0) continue;
+
+      // Load balancing algoritmasına göre DNS kayıtları oluştur
+      switch (lb.algorithm) {
+        case 'round-robin':
+          // Her sağlıklı sunucu için A kaydı
+          for (const server of healthyServers) {
+            zoneContent += `${lb.name}       IN      A       ${server.ip}\n`;
+          }
+          break;
+
+        case 'weighted':
+          // Weight'e göre birden fazla kayıt
+          for (const server of healthyServers) {
+            const recordCount = Math.floor(server.weight / 10);
+            for (let i = 0; i < recordCount; i++) {
+              zoneContent += `${lb.name}       IN      A       ${server.ip}\n`;
+            }
+          }
+          break;
+
+        case 'health-based':
+          // En sağlıklı sunucular için kayıt
+          const sortedServers = healthyServers.sort((a, b) => {
+            const aHealth = a.health || { responseTime: 0 };
+            const bHealth = b.health || { responseTime: 0 };
+            return (aHealth.responseTime || 0) - (bHealth.responseTime || 0);
+          });
+          
+          const topServers = sortedServers.slice(0, 3);
+          for (const server of topServers) {
+            zoneContent += `${lb.name}       IN      A       ${server.ip}\n`;
+          }
+          break;
+      }
+
+      // SRV kayıtları (eğer birden fazla sunucu varsa)
+      if (healthyServers.length > 1) {
+        for (let i = 0; i < healthyServers.length; i++) {
+          const server = healthyServers[i];
+          const weight = Math.floor((1 / healthyServers.length) * 100);
+          zoneContent += `_${lb.name}._tcp.${domain.name}.       IN      SRV     0 ${weight} ${server.port} ${server.ip}\n`;
+        }
+      }
+    }
+  }
+
   // Write zone file
   const fs = require('fs').promises;
   await fs.writeFile(zoneFilePath, zoneContent);
@@ -115,7 +223,7 @@ ns1     IN      A       127.0.0.1
   console.log(`Created zone file: ${zoneFilePath}`);
 }
 
-async function updateNamedConfLocal(domains: any[]) {
+async function updateNamedConfLocal(domains: Domain[]) {
   const fs = require('fs').promises;
   
   let configContent = `//
@@ -159,5 +267,41 @@ async function reloadBind9() {
       console.error('Error restarting Bind9:', restartError);
       throw restartError;
     }
+  }
+}
+
+// DNS load balancer health check sonuçlarına göre DNS kayıtlarını güncelle
+export async function updateDNSLoadBalancerRecords() {
+  try {
+    // Tüm domain'leri yeniden senkronize et
+    await syncBind9();
+    
+    console.log('DNS load balancer records updated successfully');
+  } catch (error) {
+    console.error('Error updating DNS load balancer records:', error);
+    throw error;
+  }
+}
+
+// DNS propagation check
+export async function checkDNSPropagation(domain: string, recordType: string = 'A') {
+  try {
+    const result = await execAsync(`dig +short ${recordType} ${domain}`);
+    return result.stdout.trim().split('\n').filter(line => line.length > 0);
+  } catch (error) {
+    console.error('Error checking DNS propagation:', error);
+    return [];
+  }
+}
+
+// Zone file validation
+export async function validateZoneFile(domain: string) {
+  try {
+    const zoneFile = `${ZONE_DIR}/${domain}.zone`;
+    const result = await execAsync(`named-checkzone ${domain} ${zoneFile}`);
+    return result.stdout.includes('OK');
+  } catch (error) {
+    console.error('Zone file validation error:', error);
+    return false;
   }
 }

@@ -91,7 +91,7 @@ export async function deleteDomain(id: string) {
 }
 
 // DNS Records
-export async function getDNSRecords(domainId: string) {
+export async function getDNSRecords(domainId: string) { 
   return apiFetch(`/domains/${domainId}/records`, { method: 'GET' });
 }
 export async function createDNSRecord(domainId: string, data: any) {
@@ -108,5 +108,102 @@ export async function updateDNSRecord(id: string, data: any) {
 }
 export async function deleteDNSRecord(id: string) {
   return apiFetch(`/records/${id}`, { method: 'DELETE' });
+}
+
+// DNS Load Balancers
+export async function getDNSLoadBalancers() {
+  return apiFetch('/dns-loadbalancer', { method: 'GET' });
+}
+
+export async function getDNSLoadBalancersByDomain(domainId: string) {
+  return apiFetch(`/dns-loadbalancer/domain/${domainId}`, { method: 'GET' });
+}
+
+export async function createDNSLoadBalancer(data: {
+  name: string;
+  domainId: string;
+  algorithm: string;
+  healthCheckInterval: number;
+  healthCheckTimeout: number;
+  maxRetries: number;
+}) {
+  return apiFetch('/dns-loadbalancer', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteDNSLoadBalancer(id: string) {
+  return apiFetch(`/dns-loadbalancer/${id}`, { method: 'DELETE' });
+}
+
+export async function addServerToDNSLoadBalancer(loadBalancerId: string, data: {
+  name: string;
+  ip: string;
+  port: number;
+  weight: number;
+}) {
+  return apiFetch(`/dns-loadbalancer/${loadBalancerId}/servers`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteServerFromDNSLoadBalancer(loadBalancerId: string, serverId: string) {
+  return apiFetch(`/dns-loadbalancer/${loadBalancerId}/servers/${serverId}`, { 
+    method: 'DELETE' 
+  });
+}
+
+export async function getDNSLoadBalancerStatus(id: string) {
+  return apiFetch(`/dns-loadbalancer/${id}/status`, { method: 'GET' });
+}
+
+export async function triggerDNSHealthCheck(id: string) {
+  return apiFetch(`/dns-loadbalancer/${id}/health-check`, { method: 'POST' });
+}
+
+export async function updateDNSRecords(id: string) {
+  return apiFetch(`/dns-loadbalancer/${id}/update-dns`, { method: 'POST' });
+}
+
+// Health Check
+export async function checkSystemHealth() {
+  return apiFetch('/health', { method: 'GET' }, false);
+}
+
+// Users API functions
+export async function getUsers() {
+  return apiFetch('/users', { method: 'GET' });
+}
+
+export async function getUser(id: string) {
+  return apiFetch(`/users/${id}`, { method: 'GET' });
+}
+
+export async function createUser(data: {
+  email: string;
+  password: string;
+  isAdmin?: boolean;
+}) {
+  return apiFetch('/users', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, true);
+}
+
+export async function updateUser(id: string, data: {
+  email?: string;
+  password?: string;
+  isAdmin?: boolean;
+}) {
+  return apiFetch(`/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }, true);
+}
+
+export async function deleteUser(id: string) {
+  return apiFetch(`/users/${id}`, { method: 'DELETE' }, true);
 }
 

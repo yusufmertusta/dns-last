@@ -1,20 +1,25 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { AuthRequest } from '../middlewares/auth';
+import { AuthRequest, authenticateJWT } from '../middlewares/auth';
 import { syncBind9 } from '../services/bind9';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// List domains (admin: all, user: own)
-router.get('/', async (req: AuthRequest, res) => {
+// List domains (admin: all, user: own) with DNS records
+router.get('/', authenticateJWT, async (req: AuthRequest, res) => {
   const where = req.user?.isAdmin ? {} : { userId: req.user.id };
-  const domains = await prisma.domain.findMany({ where });
+  const domains = await prisma.domain.findMany({ 
+    where,
+    include: {
+      records: true
+    }
+  });
   res.json(domains);
 });
 
 // Create domain
-router.post('/', async (req: AuthRequest, res) => {
+router.post('/', authenticateJWT, async (req: AuthRequest, res) => {
   const { name } = req.body;
   const userId = req.user.isAdmin && req.body.userId ? req.body.userId : req.user.id;
   try {
@@ -27,7 +32,7 @@ router.post('/', async (req: AuthRequest, res) => {
 });
 
 // Update domain (admin or owner)
-router.put('/:id', async (req: AuthRequest, res) => {
+router.put('/:id', authenticateJWT, async (req: AuthRequest, res) => {
   const domain = await prisma.domain.findUnique({ where: { id: req.params.id } });
   if (!domain) return res.sendStatus(404);
   if (!req.user.isAdmin && domain.userId !== req.user.id) return res.sendStatus(403);
@@ -38,7 +43,7 @@ router.put('/:id', async (req: AuthRequest, res) => {
 });
 
 // Delete domain (admin or owner)
-router.delete('/:id', async (req: AuthRequest, res) => {
+router.delete('/:id', authenticateJWT, async (req: AuthRequest, res) => {
   const domain = await prisma.domain.findUnique({ where: { id: req.params.id } });
   if (!domain) return res.sendStatus(404);
   if (!req.user.isAdmin && domain.userId !== req.user.id) return res.sendStatus(403);
@@ -48,7 +53,7 @@ router.delete('/:id', async (req: AuthRequest, res) => {
 });
 
 // List DNS records for a domain
-router.get('/:id/records', async (req: AuthRequest, res) => {
+router.get('/:id/records', authenticateJWT, async (req: AuthRequest, res) => {
   const domain = await prisma.domain.findUnique({ where: { id: req.params.id } });
   if (!domain) return res.sendStatus(404);
   if (!req.user.isAdmin && domain.userId !== req.user.id) return res.sendStatus(403);
